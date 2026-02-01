@@ -69,7 +69,7 @@ def get_data_from_json_file():
 class SetBookInfo:
     book_title: str
     book_author: str
-    book_isAvailable: bool
+    book_isAvailable: str
         
         
     def add_book_info_to_data_dict(self):
@@ -105,7 +105,7 @@ class RemoveBook:
             else:
                 print("You Remove Nothing from Library")
         else:
-            raise BookNotFoundError(f"404 NOT FOUND :)\nCannot found your Book with <{self.book_title}> name.")
+            raise BookNotFoundError("404 NOT FOUND :)\nCannot found Book.")
 
         
 @dataclass
@@ -123,9 +123,9 @@ class Book_Search:
         if self.book_title in book_names_list:
             print(f"FINISH... \n{self.book_title} found in Book Lists...")
             data = get_data_from_json_file()
-            print(f"{self.book_title}: \nBook ID: \t {data[self.book_title]["ID"]}\nBook Author: \t {data[self.book_title]["Author"]}\nBook Availability: \t {data[self.book_title]["Available"]}")
+            print(f"Book Name: \t {self.book_title}\nBook ID: \t {data[self.book_title]["ID"]}\nBook Author: \t {data[self.book_title]["Author"]}\nBook Availability: \t {data[self.book_title]["Available"]}")
         else:
-            raise BookNotFoundError(f"404 NOT FOUND :)\nCannot found your Book with <{self.book_title}> name.")
+            raise BookNotFoundError("404 NOT FOUND :)\nCannot found Book.")
     
     
     def check_book_availability(self):
@@ -133,12 +133,12 @@ class Book_Search:
         if self.book_title in book_names_list:
             print(f"FINISH... \n{self.book_title} found in Book Lists...")
             data = get_data_from_json_file()
-            if data[self.book_title]["Available"]:
+            if data[self.book_title]["Available"] == "True":
                 print(f"{self.book_title} is Available... :)")
             else:
                 raise BookNotAvailableError("SORRY! THE BOOK IS NOT AVAILABLE RIGHT NOW...")
         else:
-            raise BookNotFoundError(f"404 NOT FOUND :)\nCannot found your Book with <{self.book_title}> name.")
+            raise BookNotFoundError("404 NOT FOUND :)\nCannot found Book.")
 
 
 def library_management_cli():
@@ -148,7 +148,7 @@ def library_management_cli():
             print("ADD NEW BOOK TO LIBRARY SECTION")
             user_input_book_title = str(input("Enter Book Title: "))
             user_input_book_author = str(input("Enter Book Author(s): "))
-            user_input_book_availability =  bool(input("Enter Book Availability (True or False): "))
+            user_input_book_availability =  str(input("Enter Book Availability (True or False): "))
             try:
                 user_new_book_add = SetBookInfo(user_input_book_title, user_input_book_author, user_input_book_availability)
                 print(f"Your Data is: \n {user_new_book_add.add_book_info_to_data_dict()}")
@@ -156,9 +156,11 @@ def library_management_cli():
                 sleep(2)
                 user_new_book_add.update_database()
                 print("Adding Progress Successful.")
-                return True
+                
             except:
-                raise BookAddedError(f"Something went wrong...\n Cannot add book into library\n  Please try again later.")
+                raise BookAddedError("Something went wrong...\n Cannot add book into library\n  Please try again later.")
+            return True
+        
         elif user_input_menu == 2:
             print("REMOVE BOOK FROM LIBRARY SECTION")
             user_input_book_title_to_remove = str(input("Enter Book Title to Search and Remove From Library: "))
@@ -169,9 +171,11 @@ def library_management_cli():
                 print(f"Search Progress Done.")
                 user_book_remove.check_book_search_result_and_remove_book()
                 print("Removing Progress Successful.")
-                return True
+                
             except:
                 raise BookRemoveError("Something went wrong...\n Cannot remove book from library\n  Please try again later.")
+            
+            return True
                 
         elif user_input_menu == 3:
             print("SEARCHING BOOK FROM LIBRARY SECTION")
@@ -183,9 +187,13 @@ def library_management_cli():
                 print(f"Search Progress Done.")
                 user_search_book_name.check_book_search_result()
                 print("Searching Progress Successful.")
-                return True
+                
             except:
-                raise BookSearchError(f"Something went wrong...\n Searching Progress Fail...\n  Please try again later.")
+                raise BookSearchError("Something went wrong...\n Searching Progress Failed...\n  Please try again later.")
+            
+            return True
+        
+        
         elif user_input_menu == 4:
             user_input_book_name_availability = str(input(f"Enter Book Name to Check Availability: "))
             try:
@@ -195,9 +203,11 @@ def library_management_cli():
                 print(f"Progress Done.")
                 user_availability_book_name.check_book_availability()
                 print("Searching and Availability Progress Successful.")
-                return True
+                
             except:
-                raise BookSearchError(f"Something went wrong...\n Searching Progress Fail...\n  Please try again later.")
+                raise BookSearchError("Something went wrong...\n Searching Progress Fail...\n  Please try again later.")
+            
+            return True
                 
 
 
