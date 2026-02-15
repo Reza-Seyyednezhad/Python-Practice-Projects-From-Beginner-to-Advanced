@@ -180,24 +180,44 @@ After completing this exercise, you should understand:
 
 """
 
-import logging
-from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from datetime import datetime
-from typing import List, Protocol, Optional
+"""
+Order & Invoice Manager (Production-Level)
 
-# -------------------------
-# Logging (Advanced)
-# -------------------------
-logger = logging.getLogger("mini_bank_system")
+Features:
+- Clean Architecture (Domain, Service, Observer)
+- Observer Pattern for event-driven notifications
+- Enum-based state management
+- Advanced logging with rotation
+- Exception hierarchy
+- Proper validation and lifecycle control
+- Resume-ready, production-style implementation
+"""
+
+import logging
+from logging.handlers import RotatingFileHandler
+from abc import ABC, abstractmethod
+from enum import Enum
+from datetime import datetime
+from typing import List, Optional
+
+# =========================================================
+# Logging Configuration (Production Level)
+# =========================================================
+
+logger = logging.getLogger("order_invoice_manager")
 logger.setLevel(logging.DEBUG)
 
 formatter = logging.Formatter(
-    "%(asctime)s - %(levelname)s - %(name)s - %(funcName)s - %(lineno)d - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
+    "%(asctime)s | %(levelname)s | %(name)s | %(funcName)s:%(lineno)d | %(message)s",
+    "%Y-%m-%d %H:%M:%S"
 )
 
-file_handler = logging.FileHandler("./files/order_voice_manager.log", mode="a", encoding="utf-8")
+file_handler = RotatingFileHandler(
+    "./files/order_invoice_manager.log",
+    maxBytes=5_000_000,
+    backupCount=5,
+    encoding="utf-8"
+)
 file_handler.setLevel(logging.DEBUG)
 file_handler.setFormatter(formatter)
 
@@ -208,161 +228,286 @@ console_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
-# -------------------------
-# Domain Models
-# -------------------------
-class Order:
-    def __init__(self, order_id: int, customer_name: str):
-        self.order_id = order_id
-        self.customer_name = customer_name
-        self.items: List[str] = []
-        self.total_amount: float = 0.0
-        self.status: str = "Pending"
-        self.created_at: datetime = datetime.now()
+# =========================================================
+# Exception Hierarchy
+# =========================================================
 
-    def add_item(self, item_name: str, price: float) -> None:
-        if price < 0:
-            logger.error("Price cannot be negative.")
-            raise ValueError("Price cannot be negative")
-        self.items.append(item_name)
-        self.total_amount += price
-        logger.info("Add Item Successful.")
+class OrderError(Exception):
+    pass
 
-    def confirm_order(self) -> None:
-        if not self.items:
-            logger.error("Cannot confirm an order with no items")
-            raise ValueError("Cannot confirm an order with no items")
-        self.status = "Confirmed"
-        logger.info("Confirmed")
+class OrderNotFoundError(OrderError):
+    pass
 
-    def cancel_order(self) -> None:
-        if self.status == "Paid":
-            logger.error("Cannot cancel a paid order")
-            raise RuntimeError("Cannot cancel a paid order")
-        self.status = "Cancelled"
-        logger.info("Cancelled")
+class InvalidOrderStateError(OrderError):
+    pass
 
-class Invoice:
-    def __init__(self, invoice_id: int, order: Order):
-        if order.status != "Confirmed":
-            logger.error("Invoice can only be generated for confirmed orders")
-            raise ValueError("Invoice can only be generated for confirmed orders")
-        self.invoice_id = invoice_id
-        self.order = order
-        self.amount_due = order.total_amount
-        self.status = "Pending"
-        self.issued_at = datetime.now()
-        logger.info(f"Invoice Generated. Invoice ID: {invoice_id}, Order ID: {order.order_id}, Amount Due: {self.amount_due}$")
+class InvoiceError(Exception):
+    pass
+
+class InvoiceNotFoundError(InvoiceError):
+    pass
+
+# =========================================================
+# Enums
+# =========================================================
+
+class OrderStatus(Enum):
+    PENDING = "Pending"
+    CONFIRMED = "Confirmed"
+    CANCELLED = "Cancelled"
+    PAID = "Paid"
 
 
+class InvoiceStatus(Enum):
+    PENDING = "Pending"
+    PAID = "Paid"
+    CANCELLED = "Cancelled"
 
-# -------------------------
-# Service
-# -------------------------
+# =========================================================
+# Observer Pattern
+# =========================================================
 
+class Event:
+    def __init__(self, name: str, data: str):
+        self.name = name
+        self.data = data
+        self.timestamp = datetime.now()
 
-# Order Service
-class OrderService:
-    def __init__(self):
-        self.orders: List[Order] = []
-        self.invoices: List[Invoice] = []
-        self.next_order_id = 1
-        self.next_invoice_id = 1
-
-    def create_order(self, customer_name: str) -> Order:
-        order = Order(self.next_order_id, customer_name)
-        self.orders.append(order)
-        logger.info(f"Order Created. Order ID: {order.order_id}, Customer: {customer_name}")
-        self.next_order_id += 1
-        return order
-
-    def cancel_order(self, order_id: int) -> None:
-        order = self._find_order(order_id)
-        if order:
-            order.cancel_order()
-            logger.info(f"Order Cancelled. Order ID: {order_id}")
-        else:
-            logger.error(f"Order not found. Order ID: {order_id}")
-            raise ValueError("Order not found")
-    
-    def get_order_summary(self, order_id: int) -> str:
-        order = self._find_order(order_id)
-        if order:
-            summary = (
-                f"Order ID: {order.order_id}\n"
-                f"Customer: {order.customer_name}\n"
-                f"Items: {', '.join(order.items)}\n"
-                f"Total Amount: {order.total_amount}$\n"
-                f"Status: {order.status}\n"
-                f"Created At: {order.created_at.strftime('%Y-%m-%d %H:%M:%S')}"
-            )
-            logger.info(f"Order Summary Retrieved. Order ID: {order_id}")
-            return summary
-        else:
-            logger.error(f"Order not found. Order ID: {order_id}")
-            raise ValueError("Order not found")
+    def __str__(self):
+        return f"{self.name} | {self.data} | {self.timestamp}"
 
 
-# Invoice Service
-class InvoiceService:
-    def __init__(self):
-        self.invoices: List[Invoice] = []
-        self.next_invoice_id = 1
+class Observer(ABC):
 
-    def generate_invoice(self, order: Order) -> Invoice:
-        invoice = Invoice(self.next_invoice_id, order)
-        self.invoices.append(invoice)
-        logger.info(f"Invoice Generated. Invoice ID: {invoice.invoice_id}, Order ID: {order.order_id}")
-        self.next_invoice_id += 1
-        return invoice
-    
-    def mark_as_paid(self, invoice_id: int) -> None:
-        invoice = self._find_invoice(invoice_id)
-        if invoice:
-            if invoice.status == "Paid":
-                logger.error(f"Invoice already paid. Invoice ID: {invoice_id}")
-                raise RuntimeError("Invoice already paid")
-            invoice.status = "Paid"
-            logger.info(f"Invoice Marked as Paid. Invoice ID: {invoice_id}")
-        else:
-            logger.error(f"Invoice not found. Invoice ID: {invoice_id}")
-            raise ValueError("Invoice not found")
-
-
-# --------------------------
-# Observers
-# --------------------------
-
-class OrderObserver(ABC):
     @abstractmethod
-    def update(self, event: str) -> None:
+    def update(self, event: Event) -> None:
         pass
 
 
-# Subject
-class OrderEventManager:
-    def __init__(self):
-        self._observers: List[OrderObserver] = []
+class EventManager:
 
-    def subscribe(self, observer: OrderObserver) -> None:
+    def __init__(self):
+        self._observers: List[Observer] = []
+
+    def subscribe(self, observer: Observer) -> None:
+        logger.debug(f"Observer subscribed: {observer.__class__.__name__}")
         self._observers.append(observer)
 
-    def unsubscribe(self, observer: OrderObserver) -> None:
+    def unsubscribe(self, observer: Observer) -> None:
         self._observers.remove(observer)
 
-    def notify(self, event: str) -> None:
+    def notify(self, event: Event) -> None:
+        logger.debug(f"Notifying observers: {event}")
         for observer in self._observers:
             observer.update(event)
 
-# Observers
-class LoggerObserver:
-    def update(self, event: str) -> None:
-        logger.info(f"[Observer:Logger] {event}")
 
-class EmailObserver:
-    def update(self, event: str) -> None:
-        logger.info(f"[Observer:Email] Email sent for event: {event}")
-        
-class MetricsObserver:
-    def update(self, event: str) -> None:
-        logger.info(f"[Observer:Metrics] Event recorded: {event}")
+# Concrete Observers
+
+class LoggingObserver(Observer):
+
+    def update(self, event: Event) -> None:
+        logger.info(f"[LoggingObserver] {event}")
+
+
+class EmailObserver(Observer):
+
+    def update(self, event: Event) -> None:
+        logger.info(f"[EmailObserver] Email sent for event: {event.name}")
+
+
+class MetricsObserver(Observer):
+
+    def update(self, event: Event) -> None:
+        logger.info(f"[MetricsObserver] Metrics recorded for: {event.name}")
+
+
+# =========================================================
+# Domain Models
+# =========================================================
+
+class Order:
+
+    def __init__(self, order_id: int, customer_name: str):
+
+        self.order_id = order_id
+        self.customer_name = customer_name
+
+        self.items: List[tuple[str, float]] = []
+
+        self.total_amount: float = 0.0
+
+        self.status = OrderStatus.PENDING
+
+        self.created_at = datetime.now()
+
+        logger.debug(f"Order created: id={order_id}")
+
+    def add_item(self, name: str, price: float):
+
+        if self.status != OrderStatus.PENDING:
+            raise InvalidOrderStateError("Cannot add items after confirmation")
+
+        if price <= 0:
+            raise ValueError("Price must be positive")
+
+        self.items.append((name, price))
+        self.total_amount += price
+
+        logger.debug(f"Item added to order {self.order_id}: {name}, {price}")
+
+    def confirm(self):
+
+        if not self.items:
+            raise OrderError("Cannot confirm empty order")
+
+        self.status = OrderStatus.CONFIRMED
+
+        logger.debug(f"Order confirmed: {self.order_id}")
+
+    def cancel(self):
+
+        if self.status == OrderStatus.PAID:
+            raise InvalidOrderStateError("Cannot cancel paid order")
+
+        self.status = OrderStatus.CANCELLED
+
+        logger.debug(f"Order cancelled: {self.order_id}")
+
+
+class Invoice:
+
+    def __init__(self, invoice_id: int, order: Order):
+
+        if order.status != OrderStatus.CONFIRMED:
+            raise InvoiceError("Order must be confirmed")
+
+        self.invoice_id = invoice_id
+        self.order = order
+
+        self.amount = order.total_amount
+
+        self.status = InvoiceStatus.PENDING
+
+        self.created_at = datetime.now()
+
+        logger.debug(f"Invoice created: id={invoice_id}")
+
+    def mark_paid(self):
+
+        if self.status == InvoiceStatus.PAID:
+            raise InvoiceError("Already paid")
+
+        self.status = InvoiceStatus.PAID
+
+        self.order.status = OrderStatus.PAID
+
+        logger.debug(f"Invoice paid: id={self.invoice_id}")
+
+
+# =========================================================
+# Services
+# =========================================================
+
+class OrderService:
+
+    def __init__(self, event_manager: EventManager):
+
+        self._orders: List[Order] = []
+
+        self._next_id = 1
+
+        self._events = event_manager
+
+    def create_order(self, customer_name: str) -> Order:
+
+        order = Order(self._next_id, customer_name)
+
+        self._orders.append(order)
+
+        self._next_id += 1
+
+        self._events.notify(Event(
+            "ORDER_CREATED",
+            f"Order {order.order_id} created for {customer_name}"
+        ))
+
+        return order
+
+    def find_order(self, order_id: int) -> Order:
+
+        for o in self._orders:
+            if o.order_id == order_id:
+                return o
+
+        raise OrderNotFoundError(order_id)
+
+
+class InvoiceService:
+
+    def __init__(self, event_manager: EventManager):
+
+        self._invoices: List[Invoice] = []
+
+        self._next_id = 1
+
+        self._events = event_manager
+
+    def create_invoice(self, order: Order) -> Invoice:
+
+        invoice = Invoice(self._next_id, order)
+
+        self._invoices.append(invoice)
+
+        self._next_id += 1
+
+        self._events.notify(Event(
+            "INVOICE_CREATED",
+            f"Invoice {invoice.invoice_id} created for order {order.order_id}"
+        ))
+
+        return invoice
+
+    def pay_invoice(self, invoice: Invoice):
+
+        invoice.mark_paid()
+
+        self._events.notify(Event(
+            "INVOICE_PAID",
+            f"Invoice {invoice.invoice_id} paid"
+        ))
+
+
+# =========================================================
+# Demo / Main
+# =========================================================
+
+def main():
+
+    logger.info("System started")
+
+    event_manager = EventManager()
+
+    event_manager.subscribe(LoggingObserver())
+    event_manager.subscribe(EmailObserver())
+    event_manager.subscribe(MetricsObserver())
+
+    order_service = OrderService(event_manager)
+    invoice_service = InvoiceService(event_manager)
+
+    order = order_service.create_order("Alice")
+
+    order.add_item("Laptop", 1500)
+    order.add_item("Mouse", 50)
+
+    order.confirm()
+
+    invoice = invoice_service.create_invoice(order)
+
+    invoice_service.pay_invoice(invoice)
+
+    logger.info("System finished")
+
+
+if __name__ == "__main__":
+    main()
